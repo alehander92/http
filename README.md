@@ -1,6 +1,8 @@
 http
 ==============
 
+TODO: not in nimble, for now clone it
+
 ```
 nimble install http
 ```
