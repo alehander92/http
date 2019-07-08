@@ -16,18 +16,26 @@ type
 
   DB* = ref object
 
-var renderBase* {.compileTime.}: string
+var renderBase* {.compileTime.}: string = currentSourcePath.splitFile[0]
+
 
 macro updateRenderBase*(path: static[string]): untyped =
   renderBase = path
 
-macro render*(name: static[string]): untyped =
+# adapted from chronicles
+
+type InstantiationInfo = tuple[filename: string, line: int, column: int]
+
+macro renderImpl*(info: static InstantiationInfo, name: static[string]): untyped =
   let path = name.repr[1 .. ^2] & ".nim"
-  let source = parseExpr(staticRead(renderBase / path))
+  let source = parseExpr(staticRead(info.filename.splitFile[0].parentDir / "views" / path))
   result = quote:
     let raw = buildHtml:
       `source`
     (Http200, $raw)
+
+template render*(name: static[string]): untyped =
+  renderImpl(instantiationInfo(0, true), name)
 
 # TEMP
 
@@ -47,7 +55,6 @@ var smallHandlers*: Table[string, (proc: (HttpCode, string))] = initTable[string
 var db2* = DB()
 
 macro handler*(args: untyped, code: untyped): untyped =
-
   var nameNode: NimNode
   var argsNode: seq[NimNode]
   argsNode.add(quote do: (HttpCode, string))
@@ -62,11 +69,14 @@ macro handler*(args: untyped, code: untyped): untyped =
   else:
     assert false, "expected nnkObjConst or nnkIdent"
   let love = quote:
-    withDB:
+    when declared(withDB):
+      withDB:
+        `code`
+    else:
       `code`
   result = newProc(nameNode, argsNode, love)
-  echo result.repr
-  
+
+
 macro route*(routes: untyped): untyped =
   result = nnkStmtList.newTree()
   for element in routes:
@@ -264,7 +274,7 @@ proc source(project: string): string =
 import http
 
 handler home:
-  render "home_view"
+  render "home"
 
 route:
   get "/": home
@@ -273,13 +283,23 @@ route:
 server()
 """
 
+proc home(project: string): string =
+  &"""
+html:
+  head()
+  body:
+    text "http page"
+"""      
+
 let NAMES = @[
   ("README.md", readme),
   ("$1.nimble", nimble),
   (".gitignore", gitignore),
   ("src/", dir),
   ("src" / "$1.nim", source),
-  ("tests/", dir)
+  ("tests/", dir),
+  ("views/", dir),
+  ("views/home.nim", home),
 ]
 
 proc newProject(project: string) =

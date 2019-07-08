@@ -64,6 +64,24 @@ The goal is to define a phoenix/rails-like framework with
 * swappable orm / view etc layers
 * good websocket/client framework interop
 
+## Create a project
+
+A new project is created similarly to rails: you can enter a command which fills in a directory with start files with structure based on nimble init
+
+```bash
+> http new --project=blog
+
+creating new project blog
+  create README.md
+  create blog.nimble
+  create .gitignore
+  create src/
+  create src/blog.nim
+  create tests/
+  create views/
+  create views/home.nim
+```
+
 ## Contributing
 
 
