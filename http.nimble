@@ -10,4 +10,4 @@ bin           = @["http"]
 
 # Dependencies
 
-requires "nim >= 0.20.2", "karax", "norm", "chronicles"
+requires "nim >= 0.20.2", "karax", "norm", "chronicles", "confutils"

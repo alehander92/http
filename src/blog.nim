@@ -2,6 +2,8 @@ import http
 
 # norm
 
+# ormin also pretty good!
+# for now norm or ormin or own!
 db("blog.db", "", "", ""):
   type
     Article = object

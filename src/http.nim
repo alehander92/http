@@ -1,6 +1,6 @@
 import strformat, strutils, sequtils, os, osproc
 import json, macros
-import karax/[karaxdsl, vdom], options, posix, net, asyncnet, asyncdispatch, httpcore, mimetypes, tables, asynchttpserver, norm/sqlite, chronicles
+import karax/[karaxdsl, vdom], options, posix, net, asyncnet, asyncdispatch, httpcore, mimetypes, tables, asynchttpserver, norm/sqlite, chronicles, confutils/defs, confutils
 
 
 # Praise the Lord!
@@ -189,5 +189,136 @@ proc server* =
   asyncCheck serveFut
   runForever()
 
+type
+  StartUpCommand* = enum
+    example,
+    `new`
+  
+  HttpOptions* = object
+    #
+    # This is our configuration type.
+    #
+    # Each field will be considered a configuration option that may appear
+    # on the command-line, whitin an environment variable or a configuration
+    # file, or elsewhere. Custom pragmas are used to annotate the fields with
+    # additional metadata that is used to augment the behavior of the library.
+    #
+    log* {.
+      desc: "Sets the log level",
+      defaultValue: LogLevel.INFO.}: LogLevel
+    
+    #
+    # This program uses a CLI interface with sub-commands (similar to git).
+    #
+    # The `StartUpCommand` enum provides the list of available sub-commands,
+    # but since we are specifying a default value of `noCommand`, the user
+    # can also launch the program without entering any particular command.
+    # The default command will also be omitted from help messages.
+    #
+    # Please note that the `logLevel` option above will be shared by all
+    # sub-commands. The rest of the nested options will be relevant only
+    # when the designated sub-command is being invoked.
+    #
+    case cmd* {.
+      command
+      defaultValue: example.}: StartUpCommand
+
+    of example:
+      discard
+
+    of `new`:
+      project {.argument.}: string
+      
+
+proc readme(project: string): string =
+  &"#{project}\n\na web app"
+
+proc nimble(project: string): string =
+  &"""
+# Package
+
+version       = "0.1.0"
+author        = "Fill in"
+description   = "A new app"
+license       = "MIT"
+srcDir        = "src"
+bin           = @["{project}"]
+
+
+# Dependencies
+
+requires "nim >= 0.20.2", "https://github.com/alehander42/http.git#head", "chronicles"
+"""
+
+proc gitignore(project: string): string =
+  &"""
+.o
+{project}
+"""
+
+proc dir(project: string): string =
+  ""
+
+proc source(project: string): string =
+  &"""
+import http
+
+handler home:
+  render "home_view"
+
+route:
+  get "/": home
+
+
+server()
+"""
+
+let NAMES = @[
+  ("README.md", readme),
+  ("$1.nimble", nimble),
+  (".gitignore", gitignore),
+  ("src/", dir),
+  ("src" / "$1.nim", source),
+  ("tests/", dir)
+]
+
+proc newProject(project: string) =
+  # for now imitating nimble init a bit but
+  # with additional structure
+  # creating new project blog
+  #   create README.md
+  #   create blog.nimble
+  #   create .gitignore
+  #   create src/
+  #   create src/blog.nim
+  #   create tests/
+
+  echo &"creating new project {project}"
+  try:
+    createDir project
+  except:
+    echo "can't create dir"
+    quit(1)
+  for (name, view) in NAMES:
+    let projectName = name % project
+    if projectName[^1] == DirSep:
+      try:
+        echo &"  create {projectName}"
+        createDir project / projectName
+      except:
+        echo "can't create dir"
+        quit(1)
+    else:
+      echo &"  create {projectName}"
+      let source = view(project)
+      writeFile(project / projectName, source)
+
+when isMainModule:
+  let opts = HttpOptions.load()
+  case opts.cmd:
+  of `new`:
+    newProject(opts.project)
+  of example:
+    discard
 
 export sqlite, karaxdsl, vdom, strformat
