@@ -362,12 +362,12 @@ proc patchModel(name: string): string =
       "export",
       "",
       "# code",
+      "createModels()",
       ""
     ]
   var linesCount = lines.len
   while i < linesCount:
     let line = lines[i]
-    echo line
     if line == "export":
       if lines[i - 2][^1] != ',':
         lines[i - 2].add(",")
@@ -400,6 +400,8 @@ let MODEL_NAMES = @[
   ("src/models/$1.nim", model2),
   ("src/model.nim", patchModel)
 ]
+
+var PATCH_NAMES = @["src/model.nim"]
 
 proc newProject(project: string) =
   # for now imitating nimble init a bit but
@@ -436,7 +438,10 @@ proc newModel(name: string) =
   # for now create models/name.nim
   for (a, view) in MODEL_NAMES:
     let filename = a % name
-    echo &"  create {filename}"
+    if filename in PATCH_NAMES:
+      echo &"  patch {filename}"
+    else:
+      echo &"  create {filename}"
     let source = view(name)
     writeFile(filename, source)
 
