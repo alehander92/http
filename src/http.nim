@@ -5,6 +5,8 @@ import karax/[karaxdsl, vdom], options, posix, net, asyncnet, asyncdispatch, htt
 
 # Praise the Lord!
 
+# Have mercy on us, O Lord!
+
 let 
   homePath = os.getHomeDir()
 
@@ -189,17 +191,17 @@ proc handleRequest(httpReq: asynchttpserver.Request): Future[void] =
   complete(future)
   return future
 
-proc createModels
 
 template server* =
   mixin createModels
   let httpServer = newAsyncHttpServer(reusePort=true)
+  # createModels()
   let serveFut = httpServer.serve(
       port,
       (proc (req: asynchttpserver.Request): Future[void] {.gcsafe, closure.} =
         handleRequest(req)),
       serverName)
-  createModels()
+  
   asyncCheck serveFut
   runForever()
 
@@ -308,17 +310,45 @@ proc model2(name: string): string =
   &"""
 import http
 
-db("blog.db", "", "", ""):
+norm:
   type
     {name.capitalizeAscii}* = object
+      example*: string
 
-  var {name} = {name.capitalizeAscii}()
-  initModels.add(proc = {name}.insert())
+init:
+  var {name} = {name.capitalizeAscii}(example: "example")
+  {name}.insert()
 """
 
 
-proc createModels =
-  discard
+var types {.compileTime.}: NimNode = nnkStmtList.newTree()
+var inits {.compileTime.}: NimNode = nnkStmtList.newTree()
+
+macro norm*(code: untyped): untyped =
+  expectKind code[0], nnkTypeSection
+  types.add(code[0][0])
+  result = quote:
+    discard
+
+
+macro init*(code: untyped): untyped =
+  inits.add(code)
+  result = quote:
+    discard
+
+macro createModels*: untyped =
+  result = nnkTypeSection.newTree()
+  for t in types:
+    result.add(t)
+  result = quote:
+    db("blog.db", "", "", ""):
+      `result`
+    addHandler newConsoleLogger()
+    withDB:
+      createTables(force=true)
+      `inits`
+
+  echo result.repr
 
 proc patchModel(name: string): string =
   var lines = readFile("src/model.nim").splitLines()
@@ -326,25 +356,26 @@ proc patchModel(name: string): string =
   if lines == @[""]:
     lines = @[
       "import",
+      "  norm/sqlite,",
+      "  http,",
       "",
       "export",
       "",
       "# code",
-      "proc createModels =",
-      "  withDB:",
-      "    createTables(force=true)",
-      "",
-      "    for model in initModels:",
-      "      model()"
+      ""
     ]
   var linesCount = lines.len
   while i < linesCount:
     let line = lines[i]
     echo line
     if line == "export":
+      if lines[i - 2][^1] != ',':
+        lines[i - 2].add(",")
       lines.insert(&"  models/{name}", i - 1)
       i += 1
     elif line == "# code":
+      if "export" notin lines[i - 2]:
+        lines[i - 2].add(",")
       lines.insert(&"  {name}", i - 1)
       break
     i += 1
@@ -419,4 +450,4 @@ when isMainModule:
   of example:
     discard
 
-export sqlite, karaxdsl, vdom, strformat
+export sqlite, karaxdsl, vdom, strformat, asyncnet, asynchttpserver,chronicles
