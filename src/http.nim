@@ -28,7 +28,7 @@ type InstantiationInfo = tuple[filename: string, line: int, column: int]
 
 macro renderImpl*(info: static InstantiationInfo, name: static[string]): untyped =
   let path = name.repr[1 .. ^2] & ".nim"
-  let source = parseExpr(staticRead(info.filename.splitFile[0].parentDir / "views" / path))
+  let source = parseExpr(staticRead(info.filename.splitFile[0].parentDir / "src" / "views" / path))
   result = quote:
     let raw = buildHtml:
       `source`
@@ -189,20 +189,26 @@ proc handleRequest(httpReq: asynchttpserver.Request): Future[void] =
   complete(future)
   return future
 
-proc server* =
+proc createModels
+
+template server* =
+  mixin createModels
   let httpServer = newAsyncHttpServer(reusePort=true)
   let serveFut = httpServer.serve(
       port,
       (proc (req: asynchttpserver.Request): Future[void] {.gcsafe, closure.} =
         handleRequest(req)),
       serverName)
+  createModels()
   asyncCheck serveFut
   runForever()
 
 type
   StartUpCommand* = enum
     example,
-    `new`
+    `new`,
+    model
+
   
   HttpOptions* = object
     #
@@ -238,6 +244,9 @@ type
 
     of `new`:
       project {.argument.}: string
+
+    of model:
+      name {.argument.}: string
       
 
 proc readme(project: string): string =
@@ -272,6 +281,7 @@ proc dir(project: string): string =
 proc source(project: string): string =
   &"""
 import http
+import model
 
 handler home:
   render "home"
@@ -291,6 +301,57 @@ html:
     text "http page"
 """      
 
+var initModels*: seq[proc: void] = @[]
+
+
+proc model2(name: string): string =
+  &"""
+import http
+
+db("blog.db", "", "", ""):
+  type
+    {name.capitalizeAscii}* = object
+
+  var {name} = {name.capitalizeAscii}()
+  initModels.add(proc = {name}.insert())
+"""
+
+
+proc createModels =
+  discard
+
+proc patchModel(name: string): string =
+  var lines = readFile("src/model.nim").splitLines()
+  var i = 0
+  if lines == @[""]:
+    lines = @[
+      "import",
+      "",
+      "export",
+      "",
+      "# code",
+      "proc createModels =",
+      "  withDB:",
+      "    createTables(force=true)",
+      "",
+      "    for model in initModels:",
+      "      model()"
+    ]
+  var linesCount = lines.len
+  while i < linesCount:
+    let line = lines[i]
+    echo line
+    if line == "export":
+      lines.insert(&"  models/{name}", i - 1)
+      i += 1
+    elif line == "# code":
+      lines.insert(&"  {name}", i - 1)
+      break
+    i += 1
+
+  result = lines.join("\n") & "\n"
+
+
 let NAMES = @[
   ("README.md", readme),
   ("$1.nimble", nimble),
@@ -298,8 +359,15 @@ let NAMES = @[
   ("src/", dir),
   ("src" / "$1.nim", source),
   ("tests/", dir),
-  ("views/", dir),
-  ("views/home.nim", home),
+  ("src/views/", dir),
+  ("src/views/home.nim", home),
+  ("src/models/", dir),
+  ("src/model.nim", proc(project: string): string = "")
+]
+
+let MODEL_NAMES = @[
+  ("src/models/$1.nim", model2),
+  ("src/model.nim", patchModel)
 ]
 
 proc newProject(project: string) =
@@ -333,11 +401,21 @@ proc newProject(project: string) =
       let source = view(project)
       writeFile(project / projectName, source)
 
+proc newModel(name: string) =
+  # for now create models/name.nim
+  for (a, view) in MODEL_NAMES:
+    let filename = a % name
+    echo &"  create {filename}"
+    let source = view(name)
+    writeFile(filename, source)
+
 when isMainModule:
   let opts = HttpOptions.load()
   case opts.cmd:
   of `new`:
     newProject(opts.project)
+  of model:
+    newModel(opts.name.toLowerAscii)
   of example:
     discard
 

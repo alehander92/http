@@ -5,8 +5,11 @@ author        = "Alexander Ivanov"
 description   = "A new awesome nimble package"
 license       = "MIT"
 srcDir        = "src"
+binDir           = "bin"
 bin           = @["http"]
-skipExt       = @[]
+# skipExt       = @[]
+# installDirs   = @["."]
+installExt    = @["nim"]
 
 
 # Dependencies
